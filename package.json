@@ -1,0 +1,16 @@
+{
+  "name": "keilani-netlify",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo \"no build step\"",
+    "deploy": "netlify deploy",
+    "deploy:prod": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "openai": "^4.56.0"
+  }
+}
+
