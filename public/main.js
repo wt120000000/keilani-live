@@ -1,20 +1,29 @@
 // public/main.js
-// Fix B: external module file + run after DOM is ready.
-// Requires: public/vendor/client-sdk.mjs (copied from node_modules/@d-id/client-sdk/dist/index.js)
-
+// Requires: public/vendor/client-sdk.mjs  (copied from node_modules/@d-id/client-sdk/dist/index.js)
 import * as DID from "./vendor/client-sdk.mjs";
 
-document.addEventListener("DOMContentLoaded", () => {
-  const videoEl  = document.getElementById("keilani");
-  const sendBtn  = document.getElementById("sendBtn");
-  const testBtn  = document.getElementById("testBtn");
-  const userText = document.getElementById("userText");
-  const statusEl = document.getElementById("status");
+// --- DEBUG: show what page actually has ---
+console.log("[Keilani] main.js loaded");
+console.log("[Keilani] Looking for DOM elements...");
+
+const videoEl  = document.getElementById("keilani");
+const sendBtn  = document.getElementById("sendBtn");
+const testBtn  = document.getElementById("testBtn");
+const userText = document.getElementById("userText");
+const statusEl = document.getElementById("status");
+
+// Defensive checks
+if (!videoEl || !sendBtn || !testBtn || !userText || !statusEl) {
+  console.error("[Keilani] Missing DOM elements", { videoEl, sendBtn, testBtn, userText, statusEl });
+  alert("Page didn’t load expected elements. Hard-refresh (Ctrl+F5) and ensure Netlify is serving /public/index.html.");
+  // Don’t proceed if DOM is incomplete
+} else {
+  console.log("[Keilani] DOM OK");
 
   (async () => {
     try {
       // 1) Fetch safe public env (Agent ID + Client Key) from Netlify function
-      const envRes = await fetch("/.netlify/functions/env");
+      const envRes = await fetch("/.netlify/functions/env", { cache: "no-store" });
       const { DID_AGENT_ID, DID_CLIENT_KEY } = await envRes.json();
 
       if (!DID_AGENT_ID || !DID_CLIENT_KEY) {
@@ -22,23 +31,27 @@ document.addEventListener("DOMContentLoaded", () => {
         console.error("Missing DID vars:", { DID_AGENT_ID, DID_CLIENT_KEY });
         return;
       }
-      console.log("Env OK:", { DID_AGENT_ID, DID_CLIENT_KEY: DID_CLIENT_KEY.slice(0,6) + "…" });
+      console.log("[Keilani] Env OK:", { DID_AGENT_ID, DID_CLIENT_KEY: DID_CLIENT_KEY.slice(0,6) + "…" });
 
       // 2) Auth + callbacks
       const auth = { type: "key", clientKey: DID_CLIENT_KEY };
       const callbacks = {
-        onSrcObjectReady: (srcObject) => { 
-          if (videoEl) videoEl.srcObject = srcObject; 
+        onSrcObjectReady: (srcObject) => {
+          console.log("[Keilani] onSrcObjectReady");
+          // ultra-defensive: ensure element still exists
+          const v = document.getElementById("keilani");
+          if (v) v.srcObject = srcObject;
+          else console.warn("[Keilani] video element vanished?");
         },
         onVideoStateChange: (s) => { 
-          console.log("video:", s); 
-          if (statusEl) statusEl.textContent = `video: ${s}`; 
+          console.log("[Keilani] video:", s); 
+          statusEl.textContent = `video: ${s}`; 
         },
-        onConnectionStateChange: (s) => { console.log("webrtc:", s); },
-        onNewMessage: (messages, type) => { console.log("chat:", type, messages); },
+        onConnectionStateChange: (s) => { console.log("[Keilani] webrtc:", s); },
+        onNewMessage: (messages, type) => { console.log("[Keilani] chat:", type, messages); },
         onError: (e) => { 
-          console.error("SDK error:", e); 
-          if (statusEl) statusEl.textContent = "Error: " + (e?.message || e); 
+          console.error("[Keilani] SDK error:", e); 
+          statusEl.textContent = "Error: " + (e?.message || e); 
         },
       };
 
@@ -52,61 +65,55 @@ document.addEventListener("DOMContentLoaded", () => {
       );
       await agentManager.connect();
 
-      // 5) Unmute when the user clicks the video (browser autoplay policy)
-      if (videoEl) {
-        videoEl.addEventListener("click", () => { videoEl.muted = false; });
-      }
+      // 5) Unmute on click (browser autoplay policy)
+      videoEl.addEventListener("click", () => { videoEl.muted = false; });
 
       // 6) Test Speak: bypass backend to verify stream+voice quickly
-      if (testBtn) {
-        testBtn.onclick = async () => {
-          try {
-            if (statusEl) statusEl.textContent = "Testing…";
-            await agentManager.speak({ type: "text", input: "Hi co-bro, I am connected!" });
-            if (statusEl) statusEl.textContent = "Ready.";
-          } catch (e) {
-            console.error("Test speak failed:", e);
-            if (statusEl) statusEl.textContent = "Test speak failed. See console.";
-          }
-        };
-      }
+      testBtn.onclick = async () => {
+        try {
+          statusEl.textContent = "Testing…";
+          await agentManager.speak({ type: "text", input: "Hi co-bro, I am connected!" });
+          statusEl.textContent = "Ready.";
+        } catch (e) {
+          console.error("[Keilani] Test speak failed:", e);
+          statusEl.textContent = "Test speak failed. See console.";
+        }
+      };
 
       // 7) Send → Netlify function (OpenAI) → speak reply
-      if (sendBtn) {
-        sendBtn.onclick = async () => {
-          const msg = (userText?.value || "").trim();
-          if (!msg) return;
+      sendBtn.onclick = async () => {
+        const msg = userText.value.trim();
+        if (!msg) return;
 
-          if (statusEl) statusEl.textContent = "Thinking…";
+        statusEl.textContent = "Thinking…";
 
-          try {
-            const r = await fetch("/.netlify/functions/keilani-reply", {
-              method: "POST",
-              headers: { "Content-Type":"application/json" },
-              body: JSON.stringify({ user: msg })
-            });
+        try {
+          const r = await fetch("/.netlify/functions/keilani-reply", {
+            method: "POST",
+            headers: { "Content-Type":"application/json" },
+            body: JSON.stringify({ user: msg })
+          });
 
-            if (!r.ok) {
-              const t = await r.text();
-              console.error("Function error:", t);
-              if (statusEl) statusEl.textContent = "Server error. Check OPENAI_API_KEY (Netlify env).";
-              return;
-            }
-
-            const { text } = await r.json();
-            console.log("Keilani says:", text);
-            if (statusEl) statusEl.textContent = "Speaking…";
-            await agentManager.speak({ type: "text", input: text });
-            if (statusEl) statusEl.textContent = "Ready.";
-          } catch (e) {
-            console.error("Send flow failed:", e);
-            if (statusEl) statusEl.textContent = "Failed to speak. See console.";
+          if (!r.ok) {
+            const t = await r.text();
+            console.error("[Keilani] Function error:", t);
+            statusEl.textContent = "Server error. Check OPENAI_API_KEY (Netlify env).";
+            return;
           }
-        };
-      }
+
+          const { text } = await r.json();
+          console.log("[Keilani] Reply:", text);
+          statusEl.textContent = "Speaking…";
+          await agentManager.speak({ type: "text", input: text });
+          statusEl.textContent = "Ready.";
+        } catch (e) {
+          console.error("[Keilani] Send flow failed:", e);
+          statusEl.textContent = "Failed to speak. See console.";
+        }
+      };
     } catch (err) {
-      console.error("Init error:", err);
-      if (statusEl) statusEl.textContent = "Init failed. See console.";
+      console.error("[Keilani] Init error:", err);
+      statusEl.textContent = "Init failed. See console.";
     }
   })();
-});
+}
