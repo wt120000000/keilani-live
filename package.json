@@ -10,7 +10,7 @@
     "deploy:prod": "netlify deploy --prod"
   },
   "dependencies": {
+    "@d-id/client-sdk": "^1.1.7",
     "openai": "^4.56.0"
   }
 }
-

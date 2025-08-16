@@ -1,9 +1,5 @@
-// --- Keilani Live Frontend (stable) ---
-// This version:
-// 1) Dynamically loads @d-id/client-sdk pinned @0.7.1 with CDN fallbacks
-// 2) Forces TURN relay (helps on strict networks / ICE failures)
-// 3) Adds a Test Speak button to verify stream/voice without backend
-// 4) Uses your Netlify function for Keilani’s reply (OpenAI on server)
+// Use the SDK file you stored in your repo (no CDN, no CORS)
+import * as sdk from "./vendor/client-sdk.mjs";
 
 const videoEl  = document.getElementById("keilani");
 const sendBtn  = document.getElementById("sendBtn");
@@ -11,30 +7,9 @@ const testBtn  = document.getElementById("testBtn");
 const userText = document.getElementById("userText");
 const statusEl = document.getElementById("status");
 
-// Load the SDK from a pinned version with fallbacks to dodge bundling quirks
-async function loadSdk() {
-  const sources = [
-    "https://unpkg.com/@d-id/client-sdk@0.7.1/dist/client-sdk.mjs",
-    "https://cdn.jsdelivr.net/npm/@d-id/client-sdk@0.7.1/dist/client-sdk.mjs",
-    "https://esm.sh/@d-id/client-sdk@0.7.1?target=es2022&bundle"
-  ];
-  let lastErr;
-  for (const src of sources) {
-    try {
-      const mod = await import(/* @vite-ignore */ src);
-      console.log("Loaded D-ID SDK from:", src);
-      return mod;
-    } catch (e) {
-      lastErr = e;
-      console.warn("Failed to load SDK from:", src, e);
-    }
-  }
-  throw lastErr || new Error("Failed to load @d-id/client-sdk from all CDNs");
-}
-
 (async () => {
   try {
-    // 1) Get safe public env (Agent ID + Client Key) from Netlify
+    // 1) Get public env (Agent ID + Client Key) from Netlify function
     const envRes = await fetch("/.netlify/functions/env");
     const { DID_AGENT_ID, DID_CLIENT_KEY } = await envRes.json();
 
@@ -45,10 +20,7 @@ async function loadSdk() {
     }
     console.log("Env OK:", { DID_AGENT_ID, DID_CLIENT_KEY: DID_CLIENT_KEY.slice(0,6) + "…" });
 
-    // 2) Load SDK (pinned version) with CDN fallback
-    const sdk = await loadSdk();
-
-    // 3) Auth + callbacks
+    // 2) Auth + callbacks
     const auth = { type: "key", clientKey: DID_CLIENT_KEY };
     const callbacks = {
       onSrcObjectReady: (srcObject) => { videoEl.srcObject = srcObject; },
@@ -58,20 +30,20 @@ async function loadSdk() {
       onError: (e) => { console.error("SDK error:", e); statusEl.textContent = "Error: " + (e?.message || e); },
     };
 
-    // 4) Force TURN relay to survive strict NAT/firewalls (fixes many ICE issues)
+    // 3) Force TURN relay to survive strict NAT/firewalls (fixes many ICE issues)
     const rtcConfig = { iceTransportPolicy: "relay" };
 
-    // 5) Create & connect the live stream to your D-ID Agent
+    // 4) Create & connect the live stream to your D-ID Agent
     const agentManager = await sdk.createAgentManager(
       DID_AGENT_ID,
       { auth, callbacks, rtcConfig }
     );
     await agentManager.connect();
 
-    // 6) Unmute when the user clicks the video (browser autoplay policy)
+    // 5) Unmute when the user clicks the video (browser autoplay policy)
     videoEl.addEventListener("click", () => { videoEl.muted = false; });
 
-    // 7) Test Speak: bypass backend to verify stream+voice quickly
+    // 6) Test Speak: bypass backend to verify stream+voice quickly
     testBtn.onclick = async () => {
       try {
         statusEl.textContent = "Testing…";
@@ -83,7 +55,7 @@ async function loadSdk() {
       }
     };
 
-    // 8) Send → ask our Netlify function (OpenAI) → speak reply
+    // 7) Send → ask our Netlify function (OpenAI) → speak reply
     sendBtn.onclick = async () => {
       const msg = userText.value.trim();
       if (!msg) return;
