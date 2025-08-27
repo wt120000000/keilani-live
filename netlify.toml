@@ -1,14 +1,9 @@
 [build]
+  command = "npm run build"
   publish = "public"
   functions = "netlify/functions"
 
-# Use esbuild so we can write modern JS (ES modules) in functions
-[functions]
-  node_bundler = "esbuild"
-
-# Helpful headers for media/WebRTC
 [[headers]]
-  for = "/*"
+  for = "/embed.js"
   [headers.values]
-    Cross-Origin-Opener-Policy = "same-origin"
-    Cross-Origin-Embedder-Policy = "require-corp"
+  Cache-Control = "public, max-age=31536000, immutable"
