@@ -1,9 +1,31 @@
 [build]
   command = "npm run build"
   publish = "public"
-  functions = "netlify/functions"
 
 [[headers]]
-  for = "/embed.js"
+  for = "/*"
   [headers.values]
-  Cache-Control = "public, max-age=31536000, immutable"
+  X-Frame-Options = "SAMEORIGIN"
+  X-Content-Type-Options = "nosniff"
+  Referrer-Policy = "strict-origin-when-cross-origin"
+  Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+  Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+  # Loosen CSP only where needed so the D-ID embed can load & open websockets.
+  # (Tighten to exact hostnames later if you want.)
+  Content-Security-Policy = """
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https:;
+    connect-src 'self' https: wss:;
+    img-src 'self' data: blob:;
+    style-src 'self' 'unsafe-inline' https:;
+    frame-src 'self' https:;
+    frame-ancestors 'self';
+    upgrade-insecure-requests;
+  """
+
+# API-style paths (if you expose any local /api endpoints on the frontend site)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
